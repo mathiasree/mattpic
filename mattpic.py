@@ -24,8 +24,9 @@ from collections import OrderedDict, deque
 import numpy as np
 from PIL import Image, ImageOps
 from PyQt6.QtCore import (QBuffer, QByteArray, QEvent, QFile, QIODevice, QMimeDatabase, QProcess, QMimeData, QObject, QPoint, QPointF, QRect,
-                          QRectF, QSettings, QSize, Qt, QThread, QTimer, QUrl, pyqtSignal)
-from PyQt6.QtGui import (QAction, QColor, QDesktopServices, QDrag, QFont, QIcon,
+                          QRectF, QSettings, QSize, QStandardPaths, Qt, QThread, QTimer, QUrl, pyqtSignal,
+                          QLibraryInfo, QLocale, QTranslator)
+from PyQt6.QtGui import (QAction, QActionGroup, QColor, QDesktopServices, QDrag, QFont, QIcon,
                          QImage, QImageReader, QKeySequence, QPainter, QPainterPath,
                          QPen, QPixmap, QPolygonF, QTransform)
 from PyQt6.QtWidgets import (QAbstractItemView, QAbstractScrollArea, QApplication, QComboBox, QDialog,
@@ -37,10 +38,22 @@ from PyQt6.QtWidgets import (QAbstractItemView, QAbstractScrollArea, QApplicatio
 
 APP = "Matt|Pic"          # Anzeigename
 APP_ID = "MattPic"        # technischer Name (Dateien, Einstellungen)
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 FLATPAK = bool(os.environ.get("FLATPAK_ID"))
 DATA_DIR = os.path.expanduser(os.environ.get("MATTPIC_DATA") or os.environ.get("PHOTOMATHIAS_DATA") or "~/.local/share/mattpic")
 HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+import i18n                         # noqa: E402
+from i18n import T                  # noqa: E402
+
+
+def num(n):
+    """Zahl mit Tausendertrennzeichen der Oberflächensprache."""
+    return f"{n:,}".replace(",", i18n.THOUSANDS.get(i18n.language(), "."))
+
+
+def photos_text(n):
+    return T("1 Foto") if n == 1 else T("{n} Fotos", n=num(n))
 THUMB = 256         # Kantenlänge der gespeicherten Vorschaubilder
 PREVIEW = 2048      # Kantenlänge der Bilder in der Großansicht
 MIME = "application/x-mattpic-ids"
@@ -487,7 +500,7 @@ class Scanner(QThread):
                     seen.add(en.path)
                     n += 1
                     if n % 500 == 0:
-                        self.status.emit(f"Durchsuche Ordner … {n:,} Dateien".replace(",", "."))
+                        self.status.emit(T("Durchsuche Ordner … {n} Dateien", n=num(n)))
                     row = rows.get(en.path)
                     if row is None:
                         new.append((en.path, folder, name, st.st_size, st.st_mtime, kind))
@@ -548,7 +561,7 @@ class Scanner(QThread):
                 with con:
                     con.executemany("UPDATE photos SET taken=? WHERE id=?", batch)
                 batch = []
-                self.status.emit(f"Lese Aufnahmedaten … {done:,} von {len(todo):,}".replace(",", "."))
+                self.status.emit(T("Lese Aufnahmedaten … {done} von {total}", done=num(done), total=num(len(todo))))
                 if time.monotonic() - last > 4:
                     last = time.monotonic()
                     self.changed.emit()
@@ -949,8 +962,8 @@ class Grid(QAbstractScrollArea):
         if not self.sections:
             p.setPen(QColor("#666"))
             p.drawText(self.viewport().rect(), Qt.AlignmentFlag.AlignCenter,
-                       "Keine Fotos gefunden.\n\nFüge über „Ordner hinzufügen“ einen Foto-Ordner hinzu\n"
-                       "oder ändere den Filter.")
+                       T("Keine Fotos gefunden.\n\nFüge über „Ordner hinzufügen“ einen Foto-Ordner hinzu\n"
+                         "oder ändere den Filter."))
             return
         vy = self.verticalScrollBar().value()
         vh = self.viewport().height()
@@ -1304,7 +1317,7 @@ class Tray(QWidget):
         p.drawRect(r)
         if not self.photos:
             p.setPen(QColor("#777"))
-            p.drawText(r, Qt.AlignmentFlag.AlignCenter, "Ablage: nichts ausgewählt")
+            p.drawText(r, Qt.AlignmentFlag.AlignCenter, T("Ablage: nichts ausgewählt"))
             return
         x, y, s = 6, 5, self.height() - 10
         text_w = 62
@@ -1322,7 +1335,7 @@ class Tray(QWidget):
         p.setPen(QColor("#333"))
         p.drawText(QRect(self.width() - text_w, 0, text_w - 6, self.height()),
                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
-                   f"{self.count:,}".replace(",", ".") + (" Foto" if self.count == 1 else " Fotos"))
+                   photos_text(self.count))
 
 
 class FolderTree(QTreeWidget):
@@ -1403,7 +1416,7 @@ class FolderTree(QTreeWidget):
     def _label(path, counts, offline, is_root):
         name = os.path.basename(path) or path
         if path in offline:
-            return f"{name} (nicht erreichbar)"
+            return T("{name} (nicht erreichbar)", name=name)
         n = counts.get(path, 0)
         return f"{name} ({n})" if n else name
 
@@ -1835,16 +1848,16 @@ EXIF_SECTIONS = (
 
 def read_exif(path):
     """Liest alle Metadaten mit exiftool. Gibt ein Wörterbuch zurück oder einen Fehlertext."""
-    cmd = ["exiftool", "-j", "-G1", "-c", "%.6f", "-d", "%d.%m.%Y %H:%M:%S", path]
+    cmd = ["exiftool", "-j", "-G1", "-c", "%.6f", "-d", T("%d.%m.%Y") + " %H:%M:%S", path]
     try:
         run = subprocess.run(cmd, capture_output=True, timeout=20)
         return json.loads(run.stdout)[0]
     except FileNotFoundError:
-        return "exiftool ist nicht installiert (Paket perl-image-exiftool)."
+        return T("exiftool ist nicht installiert (Paket perl-image-exiftool).")
     except subprocess.TimeoutExpired:
-        return "exiftool hat zu lange gebraucht."
+        return T("exiftool hat zu lange gebraucht.")
     except (OSError, ValueError, IndexError):
-        return "Die Metadaten konnten nicht gelesen werden."
+        return T("Die Metadaten konnten nicht gelesen werden.")
 
 
 def exif_html(data):
@@ -1878,12 +1891,12 @@ def exif_html(data):
             if value is None or label in seen:
                 continue
             seen.add(label)
-            rows.append((label, value.replace(" Above Sea Level", "") + unit))
+            rows.append((T(label), value.replace(" Above Sea Level", "") + unit))
         if rows:
-            out.append(head(title) + table(rows))
+            out.append(head(T(title)) + table(rows))
     if not groups:
-        return "<p>Keine Metadaten gefunden.</p>"
-    out.append("<hr>" + head("Alle Daten"))
+        return T("<p>Keine Metadaten gefunden.</p>")
+    out.append("<hr>" + head(T("Alle Daten")))
     for group, rows in groups.items():
         out.append(f"<p style='margin:7px 0 1px 0;color:#555'><i>{html.escape(group)}</i></p>" + table(rows))
     return "".join(out)
@@ -1932,7 +1945,7 @@ class EditView(QWidget):
         film.setStyleSheet("#filmbar { background: #1f1f1f; }")
         fl = QHBoxLayout(film)
         fl.setContentsMargins(8, 0, 0, 0)
-        self.back_btn = QPushButton("◀  Zurück zur Bibliothek")
+        self.back_btn = QPushButton(T("◀  Zurück zur Bibliothek"))
         self.back_btn.clicked.connect(self.leave)
         fl.addWidget(self.back_btn)
         self.film = Filmstrip(win.cache)
@@ -1961,59 +1974,59 @@ class EditView(QWidget):
         fix = QWidget()
         fv = QVBoxLayout(fix)
         fv.setSpacing(5)
-        self.crop_btn = QPushButton("Zuschneiden (C)")
+        self.crop_btn = QPushButton(T("Zuschneiden (C)"))
         self.crop_btn.clicked.connect(self.start_crop)
         fv.addWidget(self.crop_btn)
         self.crop_box = QWidget()
         cb = QVBoxLayout(self.crop_box)
         cb.setContentsMargins(0, 0, 0, 0)
         self.ratio = QComboBox()
-        self.ratio.addItem("Freies Format", None)
-        for text, val in (("Originalformat", -1.0), ("3 : 2", 1.5), ("2 : 3", 2 / 3), ("4 : 3", 4 / 3), ("3 : 4", .75),
+        self.ratio.addItem(T("Freies Format"), None)
+        for text, val in ((T("Originalformat"), -1.0), ("3 : 2", 1.5), ("2 : 3", 2 / 3), ("4 : 3", 4 / 3), ("3 : 4", .75),
                           ("1 : 1", 1.0), ("16 : 9", 16 / 9)):
             self.ratio.addItem(text, val)
         self.ratio.currentIndexChanged.connect(self._ratio_changed)
         cb.addWidget(self.ratio)
         row = QHBoxLayout()
-        ok = QPushButton("Übernehmen")
+        ok = QPushButton(T("Übernehmen"))
         ok.clicked.connect(self.apply_crop)
-        no = QPushButton("Abbrechen")
+        no = QPushButton(T("Abbrechen"))
         no.clicked.connect(self.cancel_crop)
         row.addWidget(ok)
         row.addWidget(no)
         cb.addLayout(row)
-        rem = QPushButton("Zuschnitt entfernen")
+        rem = QPushButton(T("Zuschnitt entfernen"))
         rem.clicked.connect(self.remove_crop)
         cb.addWidget(rem)
         self.crop_box.hide()
         fv.addWidget(self.crop_box)
-        self.auto_btn = QPushButton("Automatik (A)")
+        self.auto_btn = QPushButton(T("Automatik (A)"))
         self.auto_btn.clicked.connect(self.auto_all)
-        self.contrast_btn = QPushButton("Auto-Kontrast")
+        self.contrast_btn = QPushButton(T("Auto-Kontrast"))
         self.contrast_btn.setCheckable(True)
         self.contrast_btn.clicked.connect(self.toggle_contrast)
-        self.color_btn = QPushButton("Auto-Farbe")
+        self.color_btn = QPushButton(T("Auto-Farbe"))
         self.color_btn.setCheckable(True)
         self.color_btn.clicked.connect(self.toggle_color)
         for b in (self.auto_btn, self.contrast_btn, self.color_btn):
             fv.addWidget(b)
         self.dials = {}
-        self.d_fill = self._dial(fv, "fill", "Aufhellen", 0, 100, 100)
-        self.d_str = self._dial(fv, "straighten", "Begradigen", -100, 100, 10)
+        self.d_fill = self._dial(fv, "fill", T("Aufhellen"), 0, 100, 100)
+        self.d_str = self._dial(fv, "straighten", T("Begradigen"), -100, 100, 10)
         self.d_str.pressed.connect(lambda: self._grid(True))
         self.d_str.released.connect(lambda: self._grid(False))
         fv.addStretch(1)
-        self.tabs.addTab(fix, "Korrekturen")
+        self.tabs.addTab(fix, T("Korrekturen"))
 
         tune = QWidget()
         tv = QVBoxLayout(tune)
         tv.setSpacing(5)
-        self._dial(tv, "high", "Lichter", 0, 100, 100)
-        self._dial(tv, "shad", "Schatten", 0, 100, 100)
-        self._dial(tv, "temp", "Farbtemperatur", -100, 100, 100)
-        self._dial(tv, "sat", "Sättigung", -100, 100, 100)
+        self._dial(tv, "high", T("Lichter"), 0, 100, 100)
+        self._dial(tv, "shad", T("Schatten"), 0, 100, 100)
+        self._dial(tv, "temp", T("Farbtemperatur"), -100, 100, 100)
+        self._dial(tv, "sat", T("Sättigung"), -100, 100, 100)
         tv.addStretch(1)
-        self.tabs.addTab(tune, "Feinabstimmung")
+        self.tabs.addTab(tune, T("Feinabstimmung"))
 
         self.exif_view = QTextBrowser()
         self.exif_view.setFrameShape(QFrame.Shape.NoFrame)
@@ -2024,9 +2037,9 @@ class EditView(QWidget):
         self.tabs.tabBarClicked.connect(self._tab_clicked)
 
         row = QHBoxLayout()
-        self.undo_btn = QPushButton("Rückgängig")
+        self.undo_btn = QPushButton(T("Rückgängig"))
         self.undo_btn.clicked.connect(self.undo)
-        self.reset_btn = QPushButton("Alles zurück")
+        self.reset_btn = QPushButton(T("Alles zurück"))
         self.reset_btn.clicked.connect(self.reset_edits)
         row.addWidget(self.undo_btn)
         row.addWidget(self.reset_btn)
@@ -2040,8 +2053,8 @@ class EditView(QWidget):
         pathrow = QHBoxLayout()
         self.path_label = PathLabel()
         pathrow.addWidget(self.path_label, 1)
-        self.copy_btn = QPushButton("Pfad kopieren")
-        self.copy_btn.setToolTip("Vollständige Adresse in die Zwischenablage kopieren")
+        self.copy_btn = QPushButton(T("Pfad kopieren"))
+        self.copy_btn.setToolTip(T("Vollständige Adresse in die Zwischenablage kopieren"))
         self.copy_btn.clicked.connect(self.copy_path)
         pathrow.addWidget(self.copy_btn)
         barv.addLayout(pathrow)
@@ -2049,18 +2062,18 @@ class EditView(QWidget):
         barv.addLayout(bl)
         self.info = QLabel()
         bl.addWidget(self.info, 1)
-        for text, tip, fn in (("⟲", "Links drehen (Strg+Umschalt+R)", lambda: win.rotate(-1)),
-                              ("⟳", "Rechts drehen (Strg+R)", lambda: win.rotate(1))):
+        for text, tip, fn in (("⟲", T("Links drehen (Strg+Umschalt+R)"), lambda: win.rotate(-1)),
+                              ("⟳", T("Rechts drehen (Strg+R)"), lambda: win.rotate(1))):
             b = QPushButton(text)
             b.setToolTip(tip)
             b.clicked.connect(fn)
             bl.addWidget(b)
         self.star_btn = QPushButton("★")
-        self.star_btn.setToolTip("Stern setzen oder entfernen (Tasten 0 bis 5)")
+        self.star_btn.setToolTip(T("Stern setzen oder entfernen (Tasten 0 bis 5)"))
         self.star_btn.clicked.connect(lambda: win.set_rating(0 if self.photo and self.photo.rating else 1))
         bl.addWidget(self.star_btn)
         out = QPushButton("−")
-        out.setToolTip("Verkleinern (Taste − oder Mausrad)")
+        out.setToolTip(T("Verkleinern (Taste − oder Mausrad)"))
         out.clicked.connect(lambda: self.zoom_by(1 / 1.25))
         bl.addWidget(out)
         self.zoom_label = QLabel("100 %")
@@ -2068,22 +2081,22 @@ class EditView(QWidget):
         self.zoom_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         bl.addWidget(self.zoom_label)
         into = QPushButton("+")
-        into.setToolTip("Vergrößern (Taste + oder Mausrad)")
+        into.setToolTip(T("Vergrößern (Taste + oder Mausrad)"))
         into.clicked.connect(lambda: self.zoom_by(1.25))
         bl.addWidget(into)
-        fit = QPushButton("Einpassen")
-        fit.setToolTip("Ganzes Bild zeigen (Taste F)")
+        fit = QPushButton(T("Einpassen"))
+        fit.setToolTip(T("Ganzes Bild zeigen (Taste F)"))
         fit.clicked.connect(self.zoom_fit)
         bl.addWidget(fit)
         zoom = QPushButton("100 % (Z)")
         zoom.clicked.connect(lambda: self.toggle_zoom(None))
         bl.addWidget(zoom)
-        self.open_with_btn = QPushButton("Öffnen mit")
+        self.open_with_btn = QPushButton(T("Öffnen mit"))
         self.open_with_btn.setMenu(QMenu(self.open_with_btn))
         self.open_with_btn.menu().aboutToShow.connect(
             lambda: win.fill_open_with(self.open_with_btn.menu()))
         bl.addWidget(self.open_with_btn)
-        self.export_btn = QPushButton("Exportieren …")
+        self.export_btn = QPushButton(T("Exportieren …"))
         self.export_btn.clicked.connect(win.export_selection)
         bl.addWidget(self.export_btn)
         outer.addWidget(bar)
@@ -2155,7 +2168,7 @@ class EditView(QWidget):
         if data is not None:
             self.exif_view.setHtml(exif_html(data))
             return
-        self.exif_view.setHtml("<p>Lese Metadaten …</p>")
+        self.exif_view.setHtml(T("<p>Lese Metadaten …</p>"))
         self.exif_timer.start()
 
     def _read_exif(self):
@@ -2238,16 +2251,16 @@ class EditView(QWidget):
     def copy_path(self):
         if self.photo:
             QApplication.clipboard().setText(self.photo.path)
-            self.copy_btn.setText("Kopiert ✓")
-            QTimer.singleShot(1500, lambda: self.copy_btn.setText("Pfad kopieren"))
+            self.copy_btn.setText(T("Kopiert ✓"))
+            QTimer.singleShot(1500, lambda: self.copy_btn.setText(T("Pfad kopieren")))
 
     def _update_info(self):
         ph = self.photo
         self.path_label.set_path(ph.path)
-        date = time.strftime("%d.%m.%Y %H:%M", time.localtime(ph.date))
+        date = time.strftime(T("%d.%m.%Y") + " %H:%M", time.localtime(ph.date))
         size = ph.size / 1048576
         stars = "★" * ph.rating
-        self.info.setText(f"{ph.name}   ·   {date}   ·   {size:.1f} MB   ·   {self.index + 1} von {len(self.seq)}   {stars}")
+        self.info.setText(f"{ph.name}   ·   {date}   ·   {size:.1f} MB   ·   " + T("{i} von {n}", i=self.index + 1, n=len(self.seq)) + f"   {stars}")
 
     def refresh_photo(self):
         """Von außen geändert (Stern, Drehung)."""
@@ -2536,13 +2549,13 @@ class MoveDialog(QDialog):
 
     def __init__(self, parent, folders, count, roots):
         super().__init__(parent)
-        self.setWindowTitle("Verschieben")
+        self.setWindowTitle(T("Verschieben"))
         self.resize(520, 420)
         self.roots = roots
         lay = QVBoxLayout(self)
-        lay.addWidget(QLabel(f"{count} {'Foto' if count == 1 else 'Fotos'} verschieben nach:"))
+        lay.addWidget(QLabel(T("1 Foto verschieben nach:") if count == 1 else T("{n} Fotos verschieben nach:", n=num(count))))
         self.edit = QLineEdit()
-        self.edit.setPlaceholderText("Ordner suchen …")
+        self.edit.setPlaceholderText(T("Ordner suchen …"))
         lay.addWidget(self.edit)
         self.list = QListWidget()
         lay.addWidget(self.list, 1)
@@ -2597,33 +2610,34 @@ class MoveDialog(QDialog):
 class ExportDialog(QDialog):
     def __init__(self, parent, count, folder):
         super().__init__(parent)
-        self.setWindowTitle("Exportieren")
+        self.setWindowTitle(T("Exportieren"))
         lay = QFormLayout(self)
-        lay.addRow(QLabel(f"{count} {'Foto wird' if count == 1 else 'Fotos werden'} mit den Korrekturen als neue "
-                          f"{'Datei' if count == 1 else 'Dateien'} gespeichert.\nDie Originale bleiben unverändert."))
+        lay.addRow(QLabel(T("1 Foto wird mit den Korrekturen als neue Datei gespeichert.\nDie Originale bleiben unverändert.") if count == 1
+                          else T("{n} Fotos werden mit den Korrekturen als neue Dateien gespeichert.\nDie Originale bleiben unverändert.",
+                                 n=num(count))))
         row = QHBoxLayout()
         self.folder = QLineEdit(folder)
         row.addWidget(self.folder, 1)
-        pick = QPushButton("Wählen …")
+        pick = QPushButton(T("Wählen …"))
         pick.clicked.connect(self._pick)
         row.addWidget(pick)
-        lay.addRow("Zielordner:", row)
+        lay.addRow(T("Zielordner:"), row)
         self.size = QComboBox()
-        for text, val in (("Originalgröße", 0), ("3000 Pixel", 3000), ("2048 Pixel", 2048), ("1600 Pixel", 1600),
-                          ("1024 Pixel", 1024)):
+        for text, val in ((T("Originalgröße"), 0), (T("{n} Pixel", n=3000), 3000), (T("{n} Pixel", n=2048), 2048), (T("{n} Pixel", n=1600), 1600),
+                          (T("{n} Pixel", n=1024), 1024)):
             self.size.addItem(text, val)
-        lay.addRow("Längste Seite:", self.size)
+        lay.addRow(T("Längste Seite:"), self.size)
         self.quality = QComboBox()
-        for text, val in (("Hoch (92)", 92), ("Sehr hoch (97)", 97), ("Mittel (82)", 82)):
+        for text, val in ((T("Hoch (92)"), 92), (T("Sehr hoch (97)"), 97), (T("Mittel (82)"), 82)):
             self.quality.addItem(text, val)
-        lay.addRow("JPEG-Qualität:", self.quality)
+        lay.addRow(T("JPEG-Qualität:"), self.quality)
         bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self.accept)
         bb.rejected.connect(self.reject)
         lay.addRow(bb)
 
     def _pick(self):
-        d = QFileDialog.getExistingDirectory(self, "Zielordner", self.folder.text())
+        d = QFileDialog.getExistingDirectory(self, T("Zielordner"), self.folder.text())
         if d:
             self.folder.setText(d)
 
@@ -2719,7 +2733,7 @@ def installed_apps():
                 continue
             if not any(code in e["Exec"] for code in ("%f", "%F", "%u", "%U")):
                 continue
-            apps[name] = {"id": name[:-8], "name": e.get("Name[de]") or e.get("Name", name[:-8]), "exec": e["Exec"],
+            apps[name] = {"id": name[:-8], "name": e.get(f"Name[{i18n.language()}]") or e.get("Name", name[:-8]), "exec": e["Exec"],
                           "icon": e.get("Icon", ""), "mime": set(filter(None, e.get("MimeType", "").split(";"))),
                           "kde": "kde" in name}
     return sorted(apps.values(), key=lambda a: a["name"].casefold())
@@ -2745,33 +2759,6 @@ def build_commands(app, paths):
     return commands
 
 
-HELP = """<h3>Matt|Pic: Tastenkürzel</h3>
-<table cellspacing=4>
-<tr><td><b>0 … 5</b></td><td>Sterne setzen</td></tr>
-<tr><td><b>Pfeile</b></td><td>Foto wechseln (Umschalt: Bereich auswählen)</td></tr>
-<tr><td><b>Enter</b></td><td>Foto öffnen</td></tr>
-<tr><td><b>Esc</b></td><td>Zurück zur Bibliothek</td></tr>
-<tr><td><b>M</b></td><td>In einen Ordner verschieben (tippen, Enter)</td></tr>
-<tr><td><b>Entf</b></td><td>In den Papierkorb</td></tr>
-<tr><td><b>Strg+R, Strg+Umschalt+R</b></td><td>Rechts, links drehen</td></tr>
-<tr><td><b>E</b></td><td>Exportieren</td></tr>
-<tr><td><b>Strg+Z</b></td><td>Rückgängig</td></tr>
-<tr><td><b>Strg+F</b></td><td>Suchen</td></tr>
-<tr><td><b>Strg+A</b></td><td>Alles auswählen</td></tr>
-<tr><td><b>F5</b></td><td>Ordner neu einlesen</td></tr>
-<tr><td><b>Strg+Mausrad</b></td><td>Vorschaubilder größer oder kleiner</td></tr>
-<tr><td><b>Rechtsklick</b></td><td>Öffnen mit …, z. B. PhotoCraft</td></tr>
-<tr><td colspan=2><br><b>In der Großansicht</b></td></tr>
-<tr><td><b>Leertaste</b></td><td>Nächstes Foto</td></tr>
-<tr><td><b>C</b></td><td>Zuschneiden (Enter übernimmt)</td></tr>
-<tr><td><b>A</b></td><td>Automatik</td></tr>
-<tr><td><b>Mausrad</b>, <b>+</b> und <b>−</b></td><td>Hinein- und herauszoomen, Ziehen verschiebt das Bild</td></tr>
-<tr><td><b>Z</b>, Doppelklick</td><td>100 % oder einpassen</td></tr>
-<tr><td><b>F</b></td><td>Ganzes Bild zeigen</td></tr>
-<tr><td colspan=2><br><b>In der Ordnerliste</b></td></tr>
-<tr><td>Fotos hineinziehen</td><td>Verschieben (mit Strg: Kopieren)</td></tr>
-</table>
-<p>Die Originale werden nie verändert. Sterne und Korrekturen stehen in der Datenbank von Matt|Pic.</p>"""
 
 
 # ---------------------------------------------------------------------------
@@ -2810,7 +2797,7 @@ class MainWindow(QMainWindow):
 
     def _after_show(self):
         if not self.roots:
-            self.status("Noch keine Ordner: Über „Ordner hinzufügen“ geht es los.")
+            self.status(T("Noch keine Ordner: Über „Ordner hinzufügen“ geht es los."))
         self.start_scan()
 
     # --- Oberfläche
@@ -2841,32 +2828,32 @@ class MainWindow(QMainWindow):
         tl = QHBoxLayout(bar)
         tl.setContentsMargins(8, 4, 8, 4)
         tl.setSpacing(6)
-        add = QPushButton("＋  Ordner hinzufügen")
+        add = QPushButton(T("＋  Ordner hinzufügen"))
         add.clicked.connect(self.add_root)
         add.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         tl.addWidget(add)
         tl.addSpacing(12)
-        tl.addWidget(QLabel("Gruppieren:"))
+        tl.addWidget(QLabel(T("Gruppieren:")))
         self.group = QComboBox()
-        self.group.addItem("Nach Ordner", "folder")
-        self.group.addItem("Nach Monat", "month")
-        self.group.addItem("Nach Jahr", "year")
+        self.group.addItem(T("Nach Ordner"), "folder")
+        self.group.addItem(T("Nach Monat"), "month")
+        self.group.addItem(T("Nach Jahr"), "year")
         tl.addWidget(self.group)
-        tl.addWidget(QLabel("Sortieren:"))
+        tl.addWidget(QLabel(T("Sortieren:")))
         self.sort = QComboBox()
-        for text, val in (("Datum, neueste zuerst", "date_desc"), ("Datum, älteste zuerst", "date_asc"),
-                          ("Name", "name"), ("Größe", "size"), ("Sterne", "rating")):
+        for text, val in ((T("Datum, neueste zuerst"), "date_desc"), (T("Datum, älteste zuerst"), "date_asc"),
+                          (T("Name"), "name"), (T("Größe"), "size"), (T("Sterne"), "rating")):
             self.sort.addItem(text, val)
         tl.addWidget(self.sort)
         tl.addStretch(1)
-        tl.addWidget(QLabel("Mindestens:"))
+        tl.addWidget(QLabel(T("Mindestens:")))
         self.min_stars = QComboBox()
-        self.min_stars.addItem("alle", 0)
+        self.min_stars.addItem(T("alle"), 0)
         for i in range(1, 6):
             self.min_stars.addItem("★" * i, i)
         tl.addWidget(self.min_stars)
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Suchen …")
+        self.search.setPlaceholderText(T("Suchen …"))
         self.search.setClearButtonEnabled(True)
         self.search.setFixedWidth(190)
         tl.addWidget(self.search)
@@ -2890,30 +2877,30 @@ class MainWindow(QMainWindow):
         bl.setSpacing(5)
         self.tray.setFixedWidth(330)
         bl.addWidget(self.tray)
-        for text, tip, fn in (("⟲", "Links drehen (Strg+Umschalt+R)", lambda: self.rotate(-1)),
-                              ("⟳", "Rechts drehen (Strg+R)", lambda: self.rotate(1))):
+        for text, tip, fn in (("⟲", T("Links drehen (Strg+Umschalt+R)"), lambda: self.rotate(-1)),
+                              ("⟳", T("Rechts drehen (Strg+R)"), lambda: self.rotate(1))):
             b = QPushButton(text)
             b.setToolTip(tip)
             b.clicked.connect(fn)
             bl.addWidget(b)
         star = QPushButton("★")
-        star.setToolTip("Stern setzen oder entfernen (Tasten 0 bis 5)")
+        star.setToolTip(T("Stern setzen oder entfernen (Tasten 0 bis 5)"))
         star.clicked.connect(self._toggle_star)
         bl.addWidget(star)
-        move = QPushButton("Verschieben (M)")
+        move = QPushButton(T("Verschieben (M)"))
         move.clicked.connect(self.move_dialog)
         bl.addWidget(move)
-        export = QPushButton("Exportieren (E)")
+        export = QPushButton(T("Exportieren (E)"))
         export.clicked.connect(self.export_selection)
         bl.addWidget(export)
-        trash = QPushButton("Papierkorb")
+        trash = QPushButton(T("Papierkorb"))
         trash.clicked.connect(self.trash_selection)
         bl.addWidget(trash)
         bl.addStretch(1)
         self.size_slider = QSlider(Qt.Orientation.Horizontal)
         self.size_slider.setRange(72, 256)
         self.size_slider.setFixedWidth(140)
-        self.size_slider.setToolTip("Größe der Vorschaubilder")
+        self.size_slider.setToolTip(T("Größe der Vorschaubilder"))
         bl.addWidget(self.size_slider)
         for w in bottom.findChildren(QWidget):
             w.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -2961,33 +2948,61 @@ class MainWindow(QMainWindow):
             menu.addAction(a)
             return a
 
-        m = self.menuBar().addMenu("&Datei")
-        action(m, "Ordner hinzufügen …", self.add_root, "Ctrl+O")
-        action(m, "Ordner neu einlesen", self.start_scan, "F5")
+        m = self.menuBar().addMenu(T("&Datei"))
+        action(m, T("Ordner hinzufügen …"), self.add_root, "Ctrl+O")
+        action(m, T("Ordner neu einlesen"), self.start_scan, "F5")
         m.addSeparator()
-        action(m, "Exportieren …", self.export_selection, "E")
+        action(m, T("Exportieren …"), self.export_selection, "E")
         m.addSeparator()
-        action(m, "Beenden", self.close, "Ctrl+Q")
-        m = self.menuBar().addMenu("&Bearbeiten")
-        action(m, "Rückgängig", self.undo, "Ctrl+Z")
+        action(m, T("Beenden"), self.close, "Ctrl+Q")
+        m = self.menuBar().addMenu(T("&Bearbeiten"))
+        action(m, T("Rückgängig"), self.undo, "Ctrl+Z")
         m.addSeparator()
-        action(m, "Alles auswählen", self.grid.select_all, "Ctrl+A")
-        action(m, "Auswahl aufheben", self.grid.clear_selection, "Ctrl+D")
-        action(m, "Suchen", self._focus_search, "Ctrl+F")
-        m = self.menuBar().addMenu("&Foto")
+        action(m, T("Alles auswählen"), self.grid.select_all, "Ctrl+A")
+        action(m, T("Auswahl aufheben"), self.grid.clear_selection, "Ctrl+D")
+        action(m, T("Suchen"), self._focus_search, "Ctrl+F")
+        m = self.menuBar().addMenu(T("&Foto"))
         for i in range(6):
-            action(m, "Keine Sterne" if i == 0 else "★" * i, lambda v=i: self.set_rating(v), str(i))
+            action(m, T("Keine Sterne") if i == 0 else "★" * i, lambda v=i: self.set_rating(v), str(i))
         m.addSeparator()
-        action(m, "Rechts drehen", lambda: self.rotate(1), "Ctrl+R")
-        action(m, "Links drehen", lambda: self.rotate(-1), "Ctrl+Shift+R")
+        action(m, T("Rechts drehen"), lambda: self.rotate(1), "Ctrl+R")
+        action(m, T("Links drehen"), lambda: self.rotate(-1), "Ctrl+Shift+R")
         m.addSeparator()
-        action(m, "In Ordner verschieben …", self.move_dialog, "M")
-        action(m, "In den Papierkorb", self.trash_selection, "Delete")
-        action(m, "Im Dateimanager zeigen", self.reveal)
-        open_with = m.addMenu("Öffnen mit")
+        action(m, T("In Ordner verschieben …"), self.move_dialog, "M")
+        action(m, T("In den Papierkorb"), self.trash_selection, "Delete")
+        action(m, T("Im Dateimanager zeigen"), self.reveal)
+        open_with = m.addMenu(T("Öffnen mit"))
         open_with.aboutToShow.connect(lambda: self.fill_open_with(open_with))
-        m = self.menuBar().addMenu("&Hilfe")
-        action(m, "Tastenkürzel", self.show_help, "F1")
+        m = self.menuBar().addMenu(T("&Hilfe"))
+        action(m, T("Tastenkürzel"), self.show_help, "F1")
+        lm = m.addMenu(T("Sprache der Oberfläche"))
+        group = QActionGroup(lm)
+        current = self.settings.value("ui_lang", "")
+        system = i18n.LANGUAGES[i18n.pick_language(QLocale.system().uiLanguages())]
+        for code, name in [("", T("Systemsprache ({lang})", lang=system))] + list(i18n.LANGUAGES.items()):
+            a = lm.addAction(name)
+            a.setCheckable(True)
+            a.setChecked(code == current)
+            group.addAction(a)
+            a.triggered.connect(lambda _=False, code=code: self.set_ui_language(code))
+            if not code:
+                lm.addSeparator()
+        m.addSeparator()
+        action(m, T("Über Matt|Pic"), self.show_about)
+
+    def set_ui_language(self, code):
+        self.settings.setValue("ui_lang", code)
+        new = code or i18n.pick_language(QLocale.system().uiLanguages())
+        if new != i18n.language():
+            i18n.set_language(new)      # nur für diese Meldung, die Menüs folgen nach dem Neustart
+            QMessageBox.information(self, T("Sprache der Oberfläche"),
+                                    T("Die neue Sprache gilt nach einem Neustart von Matt|Pic."))
+
+    def show_about(self):
+        QMessageBox.about(self, T("Über Matt|Pic"),
+                          f"<h3>Matt|Pic {APP_VERSION}</h3><p>" + T("Fotos schnell sortieren und bearbeiten.") +
+                          "</p><p>© 2026 Mathias Ree · GPL-3.0-or-later<br>"
+                          "<a href='https://github.com/mathiasree/mattpic'>github.com/mathiasree/mattpic</a></p>")
 
     def eventFilter(self, obj, ev):
         if obj is self.search and ev.type() == ev.Type.KeyPress and ev.key() == Qt.Key.Key_Escape:
@@ -3006,9 +3021,9 @@ class MainWindow(QMainWindow):
 
     def _update_counts(self):
         n = len(self.grid.flat)
-        text = f"{n:,} Fotos".replace(",", ".")
+        text = photos_text(n)
         if self.engine.remaining():
-            text = f"Vorschaubilder: noch {self.engine.remaining():,}".replace(",", ".") + "   ·   " + text
+            text = T("Vorschaubilder: noch {n}", n=num(self.engine.remaining())) + "   ·   " + text
         self.count_label.setText(text)
 
     # --- Daten
@@ -3070,10 +3085,10 @@ class MainWindow(QMainWindow):
             for folder, ps in groups.items():
                 newest = max(p.date for p in ps)
                 oldest = min(p.date for p in ps)
-                when = time.strftime("%d.%m.%Y", time.localtime(newest))
+                when = time.strftime(T("%d.%m.%Y"), time.localtime(newest))
                 if time.strftime("%Y%m%d", time.localtime(oldest)) != time.strftime("%Y%m%d", time.localtime(newest)):
-                    when = time.strftime("%d.%m.%Y", time.localtime(oldest)) + " bis " + when
-                sub = f"{when}   ·   {len(ps)} {'Foto' if len(ps) == 1 else 'Fotos'}"
+                    when = T("{a} bis {b}", a=time.strftime(T("%d.%m.%Y"), time.localtime(oldest)), b=when)
+                sub = f"{when}   ·   {photos_text(len(ps))}"
                 items.append((newest, Section(folder, os.path.basename(folder), sub, ps)))
             if order == "date_asc":
                 items.sort(key=lambda t: t[0])
@@ -3089,8 +3104,8 @@ class MainWindow(QMainWindow):
             sections = []
             for key in sorted(groups, reverse=order != "date_asc"):
                 ps = groups[key]
-                title = f"{MONTHS[int(key[5:]) - 1]} {key[:4]}" if mode == "month" else key
-                sections.append(Section(key, title, f"{len(ps)} {'Foto' if len(ps) == 1 else 'Fotos'}", ps))
+                title = f"{T(MONTHS[int(key[5:]) - 1])} {key[:4]}" if mode == "month" else key
+                sections.append(Section(key, title, photos_text(len(ps)), ps))
         self.grid.set_sections(sections)
         self._update_counts()
 
@@ -3123,13 +3138,13 @@ class MainWindow(QMainWindow):
         self.offline = set(self.scanner.offline)
         self.refresh_tree()
         if self.offline:
-            self.status("Nicht erreichbar: " + ", ".join(os.path.basename(r) for r in self.offline))
+            self.status(T("Nicht erreichbar: ") + ", ".join(os.path.basename(r) for r in self.offline))
         if self.rescan_pending:
             self.rescan_pending = False
             self.start_scan()
 
     def add_root(self):
-        d = QFileDialog.getExistingDirectory(self, "Foto-Ordner hinzufügen", os.path.expanduser("~"))
+        d = QFileDialog.getExistingDirectory(self, T("Foto-Ordner hinzufügen"), os.path.expanduser("~"))
         if d:
             self.add_root_path(d)
 
@@ -3137,7 +3152,7 @@ class MainWindow(QMainWindow):
         d = os.path.abspath(d)
         for r in self.roots:
             if d == r or d.startswith(r + os.sep):
-                self.status(f"Der Ordner gehört schon zur Bibliothek: {r}")
+                self.status(T("Der Ordner gehört schon zur Bibliothek: {path}", path=r))
                 return
         with self.con:
             for r in self.roots:
@@ -3148,9 +3163,9 @@ class MainWindow(QMainWindow):
         self.start_scan()
 
     def remove_root(self, root):
-        answer = QMessageBox.question(self, "Ordner entfernen",
-                                      f"„{os.path.basename(root)}“ aus Matt|Pic entfernen?\n\n"
-                                      "Die Dateien bleiben unberührt. Sterne und Korrekturen dieses Ordners gehen verloren.")
+        answer = QMessageBox.question(self, T("Ordner entfernen"),
+                                      T("„{name}“ aus Matt|Pic entfernen?\n\nDie Dateien bleiben unberührt. Sterne und Korrekturen dieses Ordners gehen verloren.",
+                                        name=os.path.basename(root)))
         if answer != QMessageBox.StandardButton.Yes:
             return
         pre = root + os.sep
@@ -3193,26 +3208,26 @@ class MainWindow(QMainWindow):
             return
         path = item.data(0, Qt.ItemDataRole.UserRole)
         m = QMenu(self)
-        m.addAction("Neuer Unterordner …", lambda: self.new_folder(path))
-        m.addAction("Im Dateimanager öffnen", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(path)))
+        m.addAction(T("Neuer Unterordner …"), lambda: self.new_folder(path))
+        m.addAction(T("Im Dateimanager öffnen"), lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(path)))
         if path in self.roots:
             m.addSeparator()
-            m.addAction("Aus Matt|Pic entfernen …", lambda: self.remove_root(path))
+            m.addAction(T("Aus Matt|Pic entfernen …"), lambda: self.remove_root(path))
         m.exec(self.tree.viewport().mapToGlobal(pos))
 
     def new_folder(self, parent):
-        name, ok = QInputDialog.getText(self, "Neuer Ordner", "Name:")
+        name, ok = QInputDialog.getText(self, T("Neuer Ordner"), T("Name:"))
         name = name.strip()
         if not ok or not name:
             return
         path = os.path.join(parent, name)
         if os.sep in name or name in (".", ".."):
-            self.status("Ungültiger Ordnername")
+            self.status(T("Ungültiger Ordnername"))
             return
         try:
             os.makedirs(path, exist_ok=True)
         except OSError as ex:
-            QMessageBox.warning(self, APP, f"Ordner konnte nicht angelegt werden:\n{ex}")
+            QMessageBox.warning(self, APP, T("Ordner konnte nicht angelegt werden:") + f"\n{ex}")
             return
         with self.con:
             self.con.execute("INSERT OR IGNORE INTO folders VALUES(?)", (path,))
@@ -3282,7 +3297,7 @@ class MainWindow(QMainWindow):
         elif self.undo_stack:
             self.undo_stack.pop()()
         else:
-            self.status("Nichts mehr rückgängig zu machen")
+            self.status(T("Nichts mehr rückgängig zu machen"))
 
     def move_dialog(self):
         photos = self.targets()
@@ -3304,7 +3319,7 @@ class MainWindow(QMainWindow):
             return
         progress = None
         if len(photos) > 15:
-            progress = QProgressDialog("Kopiere …" if copy else "Verschiebe …", "Abbrechen", 0, len(photos), self)
+            progress = QProgressDialog(T("Kopiere …") if copy else T("Verschiebe …"), T("Abbrechen"), 0, len(photos), self)
             progress.setWindowModality(Qt.WindowModality.WindowModal)
         done, errors = [], []
         for i, p in enumerate(photos):
@@ -3327,14 +3342,14 @@ class MainWindow(QMainWindow):
         if progress:
             progress.close()
         if errors:
-            QMessageBox.warning(self, APP, "Nicht alles hat geklappt:\n\n" + "\n".join(errors[:12]))
+            QMessageBox.warning(self, APP, T("Nicht alles hat geklappt:") + "\n\n" + "\n".join(errors[:12]))
         if copy:
-            self.status(f"{len(photos) - len(errors)} kopiert")
+            self.status(T("{n} kopiert", n=len(photos) - len(errors)))
             self.start_scan()
             return
         if done:
             self.undo_stack.append(lambda: self._undo_move(done))
-            self.status(f"{len(done)} nach „{os.path.basename(folder)}“ verschoben. Strg+Z macht es rückgängig.")
+            self.status(T("{n} nach „{folder}“ verschoben. Strg+Z macht es rückgängig.", n=len(done), folder=os.path.basename(folder)))
             self._after_removal({p.id for p, *_ in done})
 
     def _relocate(self, p, dst):
@@ -3356,7 +3371,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, APP, "\n".join(errors[:12]))
         self.apply_view()
         self.refresh_tree()
-        self.status(f"{len(done) - len(errors)} zurückverschoben")
+        self.status(T("{n} zurückverschoben", n=len(done) - len(errors)))
 
     def _after_removal(self, ids):
         current = self.edit.photo.id if self.in_editor() and self.edit.photo else None
@@ -3380,10 +3395,10 @@ class MainWindow(QMainWindow):
         with self.con:
             self.con.executemany("UPDATE photos SET missing=1 WHERE id=?", [(p.id,) for p, *_ in done])
         if errors:
-            QMessageBox.warning(self, APP, "Konnte nicht in den Papierkorb (z. B. auf Netzlaufwerken):\n\n" + "\n".join(errors[:12]))
+            QMessageBox.warning(self, APP, T("Konnte nicht in den Papierkorb (z. B. auf Netzlaufwerken):") + "\n\n" + "\n".join(errors[:12]))
         if done:
             self.undo_stack.append(lambda: self._undo_trash(done))
-            self.status(f"{len(done)} im Papierkorb. Strg+Z holt sie zurück.")
+            self.status(T("{n} im Papierkorb. Strg+Z holt sie zurück.", n=len(done)))
             self._after_removal({p.id for p, *_ in done})
 
     def _undo_trash(self, done):
@@ -3412,9 +3427,9 @@ class MainWindow(QMainWindow):
     def export_selection(self):
         photos = self.targets()
         if not photos:
-            self.status("Erst Fotos auswählen")
+            self.status(T("Erst Fotos auswählen"))
             return
-        default = self.settings.value("export_dir", os.path.expanduser("~/Bilder/MattPic-Export"))
+        default = self.settings.value("export_dir", os.path.join(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.PicturesLocation), "MattPic-Export"))
         dlg = ExportDialog(self, len(photos), default)
         if not dlg.exec():
             return
@@ -3422,10 +3437,10 @@ class MainWindow(QMainWindow):
         try:
             os.makedirs(dest, exist_ok=True)
         except OSError as ex:
-            QMessageBox.warning(self, APP, f"Zielordner geht nicht:\n{ex}")
+            QMessageBox.warning(self, APP, T("Zielordner geht nicht:") + f"\n{ex}")
             return
         self.settings.setValue("export_dir", dest)
-        progress = QProgressDialog("Exportiere …", "Abbrechen", 0, len(photos), self)
+        progress = QProgressDialog(T("Exportiere …"), T("Abbrechen"), 0, len(photos), self)
         progress.setWindowModality(Qt.WindowModality.WindowModal)
         progress.setMinimumDuration(200)
         worker = Exporter(self, photos, dest, dlg.size.currentData(), dlg.quality.currentData())
@@ -3437,15 +3452,15 @@ class MainWindow(QMainWindow):
         def finished():
             progress.close()
             if errors:
-                QMessageBox.warning(self, APP, "Nicht alles hat geklappt:\n\n" + "\n".join(errors[:12]))
-            self.status(f"{len(photos) - len(errors)} exportiert nach {dest}")
+                QMessageBox.warning(self, APP, T("Nicht alles hat geklappt:") + "\n\n" + "\n".join(errors[:12]))
+            self.status(T("{n} exportiert nach {dest}", n=len(photos) - len(errors), dest=dest))
         worker.finished.connect(finished)
         worker.start()
 
     def show_help(self):
         box = QMessageBox(self)
-        box.setWindowTitle("Tastenkürzel")
-        box.setText(HELP)
+        box.setWindowTitle(T("Tastenkürzel"))
+        box.setText(T(i18n.HELP_KEY))
         box.exec()
 
     def _grid_menu(self, pos):
@@ -3457,14 +3472,14 @@ class MainWindow(QMainWindow):
             return
         m = QMenu(self)
         if not self.in_editor():
-            m.addAction("Öffnen", lambda: self.open_photo(self.grid.selected_photos()[0]))
-        self.fill_open_with(m.addMenu("Öffnen mit"))
+            m.addAction(T("Öffnen"), lambda: self.open_photo(self.grid.selected_photos()[0]))
+        self.fill_open_with(m.addMenu(T("Öffnen mit")))
         m.addSeparator()
-        m.addAction("In Ordner verschieben …", self.move_dialog)
-        m.addAction("Exportieren …", self.export_selection)
-        m.addAction("Im Dateimanager zeigen", self.reveal)
+        m.addAction(T("In Ordner verschieben …"), self.move_dialog)
+        m.addAction(T("Exportieren …"), self.export_selection)
+        m.addAction(T("Im Dateimanager zeigen"), self.reveal)
         m.addSeparator()
-        m.addAction("In den Papierkorb", self.trash_selection)
+        m.addAction(T("In den Papierkorb"), self.trash_selection)
         m.exec(pos)
 
     def fill_open_with(self, menu):
@@ -3472,7 +3487,7 @@ class MainWindow(QMainWindow):
         menu.clear()
         photos = self.targets()
         if not photos:
-            menu.addAction("Erst ein Foto auswählen").setEnabled(False)
+            menu.addAction(T("Erst ein Foto auswählen")).setEnabled(False)
             return
         mime = QMimeDatabase().mimeTypeForFile(photos[0].path).name()
         if self.apps is None:
@@ -3486,11 +3501,11 @@ class MainWindow(QMainWindow):
             add(app)
         if pinned or fitting:
             menu.addSeparator()
-        menu.addAction("Anderes Programm …", self._open_with_other)
+        menu.addAction(T("Anderes Programm …"), self._open_with_other)
 
     def _open_with_other(self):
         names = [a["name"] for a in self.apps]
-        name, ok = QInputDialog.getItem(self, "Öffnen mit", "Programm:", names, 0, False)
+        name, ok = QInputDialog.getItem(self, T("Öffnen mit"), T("Programm:"), names, 0, False)
         if ok:
             self.open_with(self.apps[names.index(name)])
 
@@ -3503,9 +3518,9 @@ class MainWindow(QMainWindow):
             started = QProcess.startDetached(cmd[0], cmd[1:])[0] or started
         if started:
             self.watch_external = True
-            self.status(f"In {app['name']} geöffnet. Speicherst du dort, kommt die Änderung hier automatisch an.")
+            self.status(T("In {app} geöffnet. Speicherst du dort, kommt die Änderung hier automatisch an.", app=app["name"]))
         else:
-            QMessageBox.warning(self, APP, f"{app['name']} ließ sich nicht starten.")
+            QMessageBox.warning(self, APP, T("{app} ließ sich nicht starten.", app=app["name"]))
 
     def changeEvent(self, e):
         # Zurück aus dem anderen Programm: nachsehen, ob dort gespeichert wurde
@@ -3551,7 +3566,7 @@ def log_exception(kind, value, tb):
         pass
     for w in QApplication.topLevelWidgets():
         if isinstance(w, MainWindow):
-            w.status(f"Interner Fehler: {value} (Details in fehler.log)")
+            w.status(T("Interner Fehler: {error} (Details in fehler.log)", error=value))
 
 
 def migrate_from_photomathias():
@@ -3582,6 +3597,14 @@ def main():
     app.setApplicationDisplayName(APP)
     app.setApplicationVersion(APP_VERSION)
     app.setDesktopFileName(os.environ.get("FLATPAK_ID") or "mattpic")
+    # Sprache: im Menü gewählt, sonst die des Computers
+    ui_lang = QSettings(APP_ID, APP_ID).value("ui_lang", "")
+    i18n.set_language(ui_lang or i18n.pick_language(QLocale.system().uiLanguages()))
+    qt_tr = QTranslator(app)
+    for d in (QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath), "/app/translations", "/usr/share/qt6/translations"):
+        if qt_tr.load(f"qtbase_{i18n.QT_TRANSLATION[i18n.language()]}", d):
+            app.installTranslator(qt_tr)
+            break
     app.setStyle("Fusion")
     app.setStyleSheet(STYLE)
     # Großansichten nur so groß wie der Bildschirm: Das hält Laden und Regler flott.

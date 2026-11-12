@@ -67,7 +67,7 @@ modules:
   - name: mattpic
     buildsystem: simple
     build-commands:
-      - install -Dm644 -t /app/share/mattpic mattpic.py mattpic.svg LICENSE
+      - install -Dm644 -t /app/share/mattpic mattpic.py i18n.py mattpic.svg LICENSE
       - install -Dm755 packaging/flatpak/mattpic.sh /app/bin/mattpic
       - install -Dm644 packaging/flatpak/com.mathiasree.MattPic.desktop /app/share/applications/com.mathiasree.MattPic.desktop
       - install -Dm644 packaging/flatpak/com.mathiasree.MattPic.metainfo.xml /app/share/metainfo/com.mathiasree.MattPic.metainfo.xml

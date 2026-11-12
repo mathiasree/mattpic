@@ -19,13 +19,16 @@
       <li>Star ratings, moving and trash with undo</li>
       <li>Quick corrections: crop, rotate, light, colour</li>
       <li>EXIF details incl. drone flight data, videos and RAW previews</li>
+      <li>Interface in English, Spanish, Portuguese and German</li>
     </ul>
-    <p>The interface is currently in German.</p>
   </description>
   <launchable type="desktop-id">com.mathiasree.MattPic.desktop</launchable>
   <url type="homepage">https://mathiasree.com</url>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.1.0" date="2026-11-12">
+      <description><p>Interface in English, Spanish, Portuguese and German (follows the system language, can be changed under Help).</p></description>
+    </release>
     <release version="1.0.0" date="2026-11-12">
       <description><p>First release as Matt|Pic.</p></description>
     </release>

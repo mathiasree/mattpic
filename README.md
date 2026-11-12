@@ -2,7 +2,9 @@
 
 Fotos schnell sortieren und bearbeiten, im Stil von Picasa. Python + PyQt6, alles in `mattpic.py`.
 
-*A fast Picasa-style photo organizer for Linux. Interface currently in German.*
+*A fast Picasa-style photo organizer for Linux. Interface in English, Spanish, Portuguese and German.*
+
+Die Oberfläche folgt der Systemsprache (Deutsch, Englisch, Spanisch, Portugiesisch) und lässt sich unter **Hilfe → Sprache der Oberfläche** umstellen. Übersetzungen stehen in `i18n.py`.
 
 ## Herunterladen (Linux)
 [MattPic-Linux.flatpak](https://github.com/mathiasree/mattpic/releases/latest/download/MattPic-Linux.flatpak) herunterladen und per Doppelklick (KDE Discover, GNOME Software) installieren, oder im Terminal:
