@@ -26,6 +26,9 @@
   <url type="homepage">https://mathiasree.com</url>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.3.0" date="2026-11-12">
+      <description><p>macOS version (Apple Silicon and Intel).</p></description>
+    </release>
     <release version="1.2.0" date="2026-11-12">
       <description><p>Windows version (MSI installer). First window fits small screens.</p></description>
     </release>
