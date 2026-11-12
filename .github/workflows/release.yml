@@ -1,0 +1,118 @@
+# Baut den Windows-Installer (.msi) für Matt|Pic.
+# - manuell: GitHub → Actions → "Windows-Installer" → Run workflow
+# - automatisch bei einem Versions-Tag (git tag v1.2.0 && git push origin v1.2.0):
+#   dann zusätzlich ins GitHub-Release. Das Linux-Flatpak entsteht lokal
+#   (packaging/flatpak/build.sh) und wird mit "gh release upload" dazugelegt.
+name: Windows-Installer
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+env:
+  PYQT: "6.11.0"
+  PYINSTALLER: "6.22.3"
+  NUMPY: "2.5.4"
+  PILLOW: "13.0.0"
+  EXIFTOOL: "13.63"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"     # 3.12: msilib für embed_languages.py
+      - name: Abhängigkeiten
+        run: |
+          python -m pip install --upgrade pip
+          pip install "PyQt6==$env:PYQT" "numpy==$env:NUMPY" "pillow==$env:PILLOW" "pyinstaller==$env:PYINSTALLER" pywin32
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add -g WixToolset.UI.wixext/5.0.2
+      - name: exiftool (Windows-Version) holen
+        shell: pwsh
+        run: |
+          $zip = "exiftool.zip"
+          Invoke-WebRequest -UserAgent "Wget" -Uri "https://sourceforge.net/projects/exiftool/files/exiftool-$($env:EXIFTOOL)_64.zip/download" -OutFile $zip
+          Expand-Archive $zip -DestinationPath exiftool-tmp
+          $dir = Get-ChildItem exiftool-tmp -Directory | Select-Object -First 1
+          New-Item -ItemType Directory -Force tools\exiftool | Out-Null
+          Copy-Item "$($dir.FullName)\*" tools\exiftool -Recurse
+          Rename-Item "tools\exiftool\exiftool(-k).exe" "exiftool.exe"
+          & tools\exiftool\exiftool.exe -ver
+          if ($LASTEXITCODE -ne 0) { throw "exiftool läuft nicht" }
+      - name: Version
+        id: v
+        shell: bash
+        run: echo "version=$(sed -n 's/^APP_VERSION = "\(.*\)"/\1/p' mattpic.py)" >> "$GITHUB_OUTPUT"
+      - name: PyInstaller
+        run: pyinstaller --noconfirm packaging/mattpic.spec
+      - name: MSI bauen (en, de, es, pt → ein mehrsprachiges MSI)
+        shell: pwsh
+        run: |
+          $v = "${{ steps.v.outputs.version }}"
+          $pc = python -c "import uuid; print(str(uuid.uuid5(uuid.NAMESPACE_URL, 'mattpic/$v')).upper())"
+          $langs = @{ "en-US" = 1033; "de-DE" = 1031; "es-ES" = 3082; "pt-BR" = 1046 }
+          foreach ($c in $langs.Keys) {
+            wix build packaging\windows\mattpic.wxs -ext WixToolset.UI.wixext -culture $c `
+              -loc packaging\windows\mattpic.$c.wxl -d Lang=$($langs[$c]) `
+              -d Version=$v -d "ProductCode={$pc}" -d "DistDir=$PWD\dist\MattPic" -o "msi-$c.msi"
+            if ($LASTEXITCODE -ne 0) { throw "wix build $c failed" }
+          }
+          $size = (Get-Item msi-en-US.msi).Length
+          if ($size -lt 20MB) { throw "MSI is only $size bytes - program files were not harvested" }
+          Copy-Item msi-en-US.msi "MattPic-Windows.msi"
+          python packaging\windows\embed_languages.py "MattPic-Windows.msi" `
+            1031=msi-de-DE.msi 3082=msi-es-ES.msi 1046=msi-pt-BR.msi
+          if ($LASTEXITCODE -ne 0) { throw "embed_languages failed" }
+          "MSI: {0:N1} MB" -f ((Get-Item MattPic-Windows.msi).Length / 1MB)
+      - name: Test – installieren, starten, Screenshot, deinstallieren
+        shell: pwsh
+        run: |
+          $msi = "MattPic-Windows.msi"
+          $p = Start-Process msiexec -ArgumentList "/i `"$msi`" /qn /l*v install.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content install.log -Tail 60; throw "msiexec exit $($p.ExitCode)" }
+          $dir = "$env:LOCALAPPDATA\Programs\MattPic"
+          $exe = "$dir\MattPic.exe"
+          if (-not (Test-Path $exe)) { throw "MattPic.exe nicht installiert" }
+          & "$dir\_internal\tools\exiftool\exiftool.exe" -ver
+          if ($LASTEXITCODE -ne 0) { throw "exiftool im Installationsordner läuft nicht" }
+          Start-Process $exe
+          Start-Sleep -Seconds 25
+          if (-not (Get-Process MattPic -ErrorAction SilentlyContinue)) {
+            Get-Content "$env:APPDATA\MattPic\fehler.log" -ErrorAction SilentlyContinue
+            throw "MattPic läuft nicht" }
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $bmp.Save("screenshot-windows.png")
+          Stop-Process -Name MattPic -Force
+          Get-Content "$env:APPDATA\MattPic\fehler.log" -ErrorAction SilentlyContinue
+          $u = Start-Process msiexec -ArgumentList "/x `"$msi`" /qn" -Wait -PassThru
+          if ($u.ExitCode -ne 0) { throw "Deinstallation exit $($u.ExitCode)" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-screenshot
+          path: screenshot-windows.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-msi
+          path: MattPic-Windows.msi
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-msi
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: MattPic-Windows.msi

@@ -119,6 +119,7 @@ ROWS = [
     ("Erst ein Foto auswählen", "Select a photo first", "Selecciona primero una foto", "Selecione uma foto primeiro"),
     ("Erst Fotos auswählen", "Select photos first", "Selecciona primero las fotos", "Selecione as fotos primeiro"),
     ("Anderes Programm …", "Other application …", "Otro programa …", "Outro programa …"),
+    ("Standardprogramm", "Default application", "Programa predeterminado", "Programa padrão"),
     ("Programm:", "Application:", "Programa:", "Programa:"),
     ("In {app} geöffnet. Speicherst du dort, kommt die Änderung hier automatisch an.",
      "Opened in {app}. If you save there, the change shows up here automatically.",

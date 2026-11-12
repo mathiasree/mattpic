@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WixLocalization Culture="en-US" xmlns="http://wixtoolset.org/schemas/v4/wxl">
+  <String Id="Description" Value="Matt|Pic – photo organizer" />
+  <String Id="Downgrade" Value="A newer version of Matt|Pic is already installed." />
+  <String Id="Comments" Value="Sort and touch up photos quickly. Free software (GNU GPL v3)." />
+</WixLocalization>

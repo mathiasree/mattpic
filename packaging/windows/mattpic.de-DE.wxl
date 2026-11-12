@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WixLocalization Culture="de-DE" xmlns="http://wixtoolset.org/schemas/v4/wxl">
+  <String Id="Description" Value="Matt|Pic – Foto-Verwaltung" />
+  <String Id="Downgrade" Value="Eine neuere Version von Matt|Pic ist bereits installiert." />
+  <String Id="Comments" Value="Fotos schnell sortieren und bearbeiten. Freie Software (GNU GPL v3)." />
+</WixLocalization>
