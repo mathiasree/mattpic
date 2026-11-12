@@ -1,9 +1,8 @@
-# Baut den Windows-Installer (.msi) für Matt|Pic.
-# - manuell: GitHub → Actions → "Windows-Installer" → Run workflow
+# Baut den Windows-Installer (.msi) und das Linux-Flatpak für Matt|Pic.
+# - manuell: GitHub → Actions → "Installer bauen" → Run workflow
 # - automatisch bei einem Versions-Tag (git tag v1.2.0 && git push origin v1.2.0):
-#   dann zusätzlich ins GitHub-Release. Das Linux-Flatpak entsteht lokal
-#   (packaging/flatpak/build.sh) und wird mit "gh release upload" dazugelegt.
-name: Windows-Installer
+#   dann zusätzlich als GitHub-Release mit beiden Dateien.
+name: Installer bauen
 
 on:
   workflow_dispatch:
@@ -103,16 +102,43 @@ jobs:
           name: windows-msi
           path: MattPic-Windows.msi
 
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Flatpak-Werkzeuge und KDE-Laufzeit
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub org.kde.Sdk//6.11 org.kde.Platform//6.11 \
+            com.riverbankcomputing.PyQt.BaseApp//6.11
+      - name: Flatpak bauen
+        run: packaging/flatpak/build.sh
+      - name: Test – Flatpak installieren und Werkzeuge prüfen
+        run: |
+          flatpak install --user -y --noninteractive dist/MattPic-Linux.flatpak
+          flatpak run --command=sh com.mathiasree.MattPic -c \
+            'exiftool -ver && python3 -c "import numpy, PIL, PyQt6.QtWidgets, sys; sys.path.insert(0, \"/app/share/mattpic\"); import i18n; print(\"ok\")"'
+          ls -la dist/MattPic-Linux.flatpak
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-flatpak
+          path: dist/MattPic-Linux.flatpak
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows]
+    needs: [windows, linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: windows-msi
+          pattern: "*-{msi,flatpak}"
+          merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
-          files: MattPic-Windows.msi
+          files: |
+            MattPic-Windows.msi
+            MattPic-Linux.flatpak

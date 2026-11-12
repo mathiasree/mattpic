@@ -2812,7 +2812,10 @@ class MainWindow(QMainWindow):
         if geo is not None:
             self.restoreGeometry(geo)
         else:
-            self.resize(1280, 720)
+            # Erster Start: 1280×720, auf kleinen Bildschirmen (z. B. 1024×768) passend verkleinert
+            avail = QApplication.primaryScreen().availableGeometry()
+            w, h = min(1280, int(avail.width() * .94)), min(720, int(avail.height() * .9))
+            self.setGeometry(avail.x() + (avail.width() - w) // 2, avail.y() + (avail.height() - h) // 2, w, h)
         QTimer.singleShot(50, self._after_show)
 
     def _after_show(self):
