@@ -41,19 +41,29 @@ APP_ID = "MattPic"        # technischer Name (Dateien, Einstellungen)
 APP_VERSION = "1.2.0"
 FLATPAK = bool(os.environ.get("FLATPAK_ID"))
 WINDOWS = sys.platform == "win32"
-_DEFAULT_DATA = os.path.join(os.environ.get("APPDATA", "~"), "MattPic") if WINDOWS else "~/.local/share/mattpic"
+MAC = sys.platform == "darwin"
+_DEFAULT_DATA = (os.path.join(os.environ.get("APPDATA", "~"), "MattPic") if WINDOWS
+                 else "~/Library/Application Support/MattPic" if MAC else "~/.local/share/mattpic")
 DATA_DIR = os.path.expanduser(os.environ.get("MATTPIC_DATA") or os.environ.get("PHOTOMATHIAS_DATA") or _DEFAULT_DATA)
 # Unter Windows kein schwarzes Konsolenfenster für exiftool
 NO_WINDOW = {"creationflags": subprocess.CREATE_NO_WINDOW} if WINDOWS else {}
 
 
 def tool(name):
-    """Mitgeliefertes Hilfsprogramm (Windows: tools\\name\\name.exe neben Matt|Pic), sonst das des Systems."""
+    """Befehl für ein Hilfsprogramm als Liste: das mitgelieferte (Windows: tools\\name\\name.exe,
+    macOS: Perl-Skript tools/exiftool/exiftool, Perl gehört zum System), sonst das des Systems."""
     if WINDOWS:
         exe = os.path.join(HERE, "tools", name, name + ".exe")
         if os.path.exists(exe):
-            return exe
-    return name
+            return [exe]
+    if MAC:
+        script = os.path.join(HERE, "tools", name, name)
+        if os.path.exists(script):
+            return ["/usr/bin/perl", script]
+        for d in ("/opt/homebrew/bin", "/usr/local/bin"):     # z. B. von Homebrew
+            if os.path.exists(os.path.join(d, name)):
+                return [os.path.join(d, name)]
+    return [name]
 
 
 def settings_store():
@@ -61,7 +71,8 @@ def settings_store():
     if WINDOWS:
         return QSettings(os.path.join(DATA_DIR, APP_ID + ".ini"), QSettings.Format.IniFormat)
     return QSettings(APP_ID, APP_ID)
-HERE = os.path.dirname(os.path.realpath(__file__))
+# Im fertigen Programm (PyInstaller) liegen die Beilagen in sys._MEIPASS
+HERE = getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, HERE)
 import i18n                         # noqa: E402
 from i18n import T                  # noqa: E402
@@ -217,7 +228,7 @@ def raw_embedded_jpeg(path):
 def video_frame(path, size):
     """Holt ein Einzelbild aus einem Video."""
     for seek in ("1", "0"):
-        cmd = [tool("ffmpeg"), "-v", "error", "-ss", seek, "-i", path, "-frames:v", "1",
+        cmd = tool("ffmpeg") + ["-v", "error", "-ss", seek, "-i", path, "-frames:v", "1",
                "-vf", f"scale='min({size},iw)':-2", "-f", "image2pipe", "-c:v", "mjpeg", "-"]
         try:
             out = subprocess.run(cmd, capture_output=True, timeout=30, **NO_WINDOW).stdout
@@ -1868,7 +1879,7 @@ EXIF_SECTIONS = (
 
 def read_exif(path):
     """Liest alle Metadaten mit exiftool. Gibt ein Wörterbuch zurück oder einen Fehlertext."""
-    cmd = [tool("exiftool"), "-j", "-G1", "-c", "%.6f", "-d", T("%d.%m.%Y") + " %H:%M:%S", path]
+    cmd = tool("exiftool") + ["-j", "-G1", "-c", "%.6f", "-d", T("%d.%m.%Y") + " %H:%M:%S", path]
     try:
         run = subprocess.run(cmd, capture_output=True, timeout=20, **NO_WINDOW)
         return json.loads(run.stdout)[0]
@@ -3449,6 +3460,8 @@ class MainWindow(QMainWindow):
         photos = self.targets()
         if photos and WINDOWS:
             QProcess.startDetached("explorer.exe", ["/select," + os.path.normpath(photos[0].path)])
+        elif photos and MAC:
+            QProcess.startDetached("open", ["-R", photos[0].path])
         elif photos:
             QDesktopServices.openUrl(QUrl.fromLocalFile(photos[0].folder))
 
@@ -3517,10 +3530,11 @@ class MainWindow(QMainWindow):
         if not photos:
             menu.addAction(T("Erst ein Foto auswählen")).setEnabled(False)
             return
-        if WINDOWS:
+        if WINDOWS or MAC:
             path = os.path.normpath(photos[0].path)
             menu.addAction(T("Standardprogramm"), lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(path)))
-            menu.addAction(T("Anderes Programm …"), lambda: self._windows_open_as(path))
+            menu.addAction(T("Anderes Programm …"),
+                           lambda: self._windows_open_as(path) if WINDOWS else self._mac_open_with([p.path for p in photos]))
             return
         mime = QMimeDatabase().mimeTypeForFile(photos[0].path).name()
         if self.apps is None:
@@ -3540,6 +3554,13 @@ class MainWindow(QMainWindow):
         """Der Windows-eigene Dialog „Öffnen mit“."""
         self.watch_external = True
         QProcess.startDetached("rundll32.exe", ["shell32.dll,OpenAs_RunDLL", path])
+
+    def _mac_open_with(self, paths):
+        """macOS: Programm im Ordner „Programme“ wählen und die Fotos mit `open -a` darin öffnen."""
+        app, _ = QFileDialog.getOpenFileName(self, T("Öffnen mit"), "/Applications", "*.app")
+        if app:
+            self.watch_external = True
+            QProcess.startDetached("open", ["-a", app] + paths[:30])
 
     def _open_with_other(self):
         names = [a["name"] for a in self.apps]
@@ -3609,7 +3630,7 @@ def log_exception(kind, value, tb):
 
 def migrate_from_photomathias():
     """Übernimmt Datenbank und Einstellungen aus der Zeit, als das Programm PhotoMathias hieß."""
-    if WINDOWS:
+    if WINDOWS or MAC:
         return
     old = os.path.expanduser("~/.local/share/photomathias")
     if not os.environ.get("MATTPIC_DATA") and not os.path.exists(DATA_DIR) and os.path.isdir(old):

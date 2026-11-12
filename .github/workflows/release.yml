@@ -1,7 +1,7 @@
-# Baut den Windows-Installer (.msi) und das Linux-Flatpak für Matt|Pic.
+# Baut den Windows-Installer (.msi), die macOS-Abbilder (.dmg) und das Linux-Flatpak für Matt|Pic.
 # - manuell: GitHub → Actions → "Installer bauen" → Run workflow
 # - automatisch bei einem Versions-Tag (git tag v1.2.0 && git push origin v1.2.0):
-#   dann zusätzlich als GitHub-Release mit beiden Dateien.
+#   dann zusätzlich als GitHub-Release mit allen Dateien.
 name: Installer bauen
 
 on:
@@ -126,9 +126,71 @@ jobs:
           name: linux-flatpak
           path: dist/MattPic-Linux.flatpak
 
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15          # Apple Silicon (M1–M4)
+            arch: AppleSilicon
+          - runner: macos-15-intel    # ältere Macs mit Intel-Prozessor
+            arch: Intel
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Abhängigkeiten
+        run: |
+          python -m pip install --upgrade pip
+          pip install "PyQt6==$PYQT" "numpy==$NUMPY" "pillow==$PILLOW" "pyinstaller==$PYINSTALLER"
+      - name: exiftool (Perl-Fassung, Perl gehört zu macOS)
+        run: |
+          curl -sSfL -o exiftool.tar.gz "https://cpan.metacpan.org/authors/id/E/EX/EXIFTOOL/Image-ExifTool-13.55.tar.gz"
+          echo "5f4c81d34ad406538c2871ad72dbfceb5d9b412b2f16cbbeb4d712d270846667  exiftool.tar.gz" | shasum -a 256 -c
+          tar xzf exiftool.tar.gz
+          mkdir -p tools/exiftool
+          cp -R Image-ExifTool-13.55/exiftool Image-ExifTool-13.55/lib tools/exiftool/
+          /usr/bin/perl tools/exiftool/exiftool -ver
+      - name: PyInstaller
+        run: pyinstaller --noconfirm packaging/mattpic.spec
+      - name: Test – exiftool im Programmpaket, Programm starten
+        run: |
+          /usr/bin/perl dist/MattPic.app/Contents/Frameworks/tools/exiftool/exiftool -ver \
+            || /usr/bin/perl dist/MattPic.app/Contents/Resources/tools/exiftool/exiftool -ver
+          dist/MattPic.app/Contents/MacOS/MattPic > app.log 2>&1 &
+          sleep 30
+          pgrep -f MattPic.app/Contents/MacOS/MattPic || { cat app.log; exit 1; }
+          screencapture -x screenshot-macos-${{ matrix.arch }}.png || true
+          pkill -f MattPic.app/Contents/MacOS/MattPic || true
+          cat "$HOME/Library/Application Support/MattPic/fehler.log" 2>/dev/null || true
+      - name: DMG bauen
+        run: |
+          mkdir dmg
+          cp -R dist/MattPic.app dmg/
+          ln -s /Applications dmg/Applications
+          cp LICENSE dmg/LICENSE.txt
+          for i in 1 2 3 4 5; do
+            hdiutil create -volname "Matt|Pic" -srcfolder dmg -ov -format UDZO \
+              "MattPic-macOS-${{ matrix.arch }}.dmg" && break
+            echo "hdiutil failed (attempt $i), retrying"; sleep 15
+            [ $i = 5 ] && exit 1
+          done
+          ls -la MattPic-macOS-*.dmg
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-screenshot-${{ matrix.arch }}
+          path: screenshot-macos-*.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg-${{ matrix.arch }}
+          path: MattPic-macOS-*.dmg
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, linux]
+    needs: [windows, linux, macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -140,4 +202,6 @@ jobs:
         with:
           files: |
             MattPic-Windows.msi
+            MattPic-macOS-AppleSilicon.dmg
+            MattPic-macOS-Intel.dmg
             MattPic-Linux.flatpak
