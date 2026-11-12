@@ -38,7 +38,7 @@ from PyQt6.QtWidgets import (QAbstractItemView, QAbstractScrollArea, QApplicatio
 
 APP = "Matt|Pic"          # Anzeigename
 APP_ID = "MattPic"        # technischer Name (Dateien, Einstellungen)
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 FLATPAK = bool(os.environ.get("FLATPAK_ID"))
 WINDOWS = sys.platform == "win32"
 _DEFAULT_DATA = os.path.join(os.environ.get("APPDATA", "~"), "MattPic") if WINDOWS else "~/.local/share/mattpic"

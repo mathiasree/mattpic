@@ -2,7 +2,7 @@
 
 Fotos schnell sortieren und bearbeiten, im Stil von Picasa. Python + PyQt6, alles in `mattpic.py`.
 
-*A fast Picasa-style photo organizer for Linux. Interface in English, Spanish, Portuguese and German.*
+*A fast Picasa-style photo organizer for Linux and Windows. Interface in English, Spanish, Portuguese and German.*
 
 Die Oberfläche folgt der Systemsprache (Deutsch, Englisch, Spanisch, Portugiesisch) und lässt sich unter **Hilfe → Sprache der Oberfläche** umstellen. Übersetzungen stehen in `i18n.py`.
 
@@ -12,6 +12,9 @@ Die Oberfläche folgt der Systemsprache (Deutsch, Englisch, Spanisch, Portugiesi
 flatpak install --user MattPic-Linux.flatpak
 ```
 Die Laufzeitumgebung kommt dabei automatisch von Flathub.
+
+## Herunterladen (Windows 10/11)
+[MattPic-Windows.msi](https://github.com/mathiasree/mattpic/releases/latest/download/MattPic-Windows.msi) herunterladen, öffnen und die Lizenz bestätigen. Es sind keine Administratorrechte nötig. Erscheint „Der Computer wurde durch Windows geschützt“: „Weitere Informationen“ → „Trotzdem ausführen“. Videos zeigen unter Windows kein Vorschaubild (ffmpeg ist nicht dabei).
 
 ## Aus dem Quelltext starten
 ```sh
