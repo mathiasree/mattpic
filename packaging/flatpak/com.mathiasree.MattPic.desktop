@@ -1,0 +1,18 @@
+[Desktop Entry]
+Type=Application
+Name=Matt|Pic
+GenericName=Photo organizer
+GenericName[de]=Foto-Verwaltung
+GenericName[es]=Organizador de fotos
+GenericName[pt]=Organizador de fotos
+Comment=Sort and touch up photos quickly
+Comment[de]=Fotos schnell sortieren und bearbeiten
+Comment[es]=Ordenar y retocar fotos rápidamente
+Comment[pt]=Organizar e retocar fotos rapidamente
+Exec=mattpic %F
+Icon=com.mathiasree.MattPic
+Terminal=false
+Categories=Graphics;Photography;Viewer;
+MimeType=image/jpeg;image/png;image/webp;image/heif;image/tiff;
+Keywords=Photo;Picture;Image;Foto;Bild;Picasa;
+StartupWMClass=com.mathiasree.MattPic

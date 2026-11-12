@@ -1,0 +1,82 @@
+# Matt|Pic als Flatpak – Bau: packaging/flatpak/build.sh
+id: com.mathiasree.MattPic
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+base: com.riverbankcomputing.PyQt.BaseApp
+base-version: '6.11'
+command: mattpic
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+  # Matt|Pic braucht keinen Browser: Qt WebEngine und Qt PDF aus der PyQt-BaseApp entfernen (~250 MB)
+  - rm -rf /app/lib/libexec /app/resources /app/translations/qtwebengine_locales /app/qtwebengine_dictionaries
+  - rm -f /app/lib/x86_64-linux-gnu/libQt6WebEngine* /app/lib/x86_64-linux-gnu/libQt6Pdf* /app/lib/x86_64-linux-gnu/libQt6WebView*
+  - rm -rf /app/lib/python3.13/site-packages/PyQt6/QtWebEngine* /app/lib/python3.13/site-packages/PyQt6/QtPdf*
+  - find /app/lib/perl5 -name '*.pod' -delete
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Fotos liegen im persönlichen Ordner, auf USB-Sticks und Speicherkarten
+  - --filesystem=home
+  - --filesystem=/media
+  - --filesystem=/run/media
+  - --filesystem=/mnt
+  # „Öffnen mit“: Programmliste des Systems lesen und das Programm außerhalb starten
+  - --filesystem=host-os:ro
+  - --filesystem=/var/lib/flatpak/exports/share:ro
+  - --talk-name=org.freedesktop.Flatpak
+modules:
+  # exiftool (EXIF-Reiter) braucht Perl, das die KDE-Laufzeit nicht mitbringt
+  - name: perl
+    buildsystem: simple
+    build-commands:
+      - ./Configure -des -Dprefix=/app -Dman1dir=none -Dman3dir=none
+      - make -j${FLATPAK_BUILDER_N_JOBS}
+      - make install
+      - chmod -R u+w /app/lib/perl5
+    cleanup:
+      - /lib/perl5/*/pod
+      - /share/man
+    sources:
+      - type: archive
+        url: https://cpan.metacpan.org/authors/id/L/LE/LEONT/perl-5.44.0.tar.gz
+        sha256: 3b855066b92491cb40e86affb1ca57d1a388aa43e51b91c7806a32c2f65f96c3
+  - name: exiftool
+    buildsystem: simple
+    build-commands:
+      - perl Makefile.PL
+      - make
+      - make install
+    sources:
+      - type: archive
+        url: https://cpan.metacpan.org/authors/id/E/EX/EXIFTOOL/Image-ExifTool-13.55.tar.gz
+        sha256: 5f4c81d34ad406538c2871ad72dbfceb5d9b412b2f16cbbeb4d712d270846667
+  - name: python-deps
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --no-deps --find-links=. --prefix=/app numpy pillow
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/da/24/3bd070f3269dc609d8f26b2643f62ef91bb415841c0b294805aaf7fe06da/numpy-2.5.4-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+        sha256: 6ffa07666f8da0eef81d149934a626d0d95fbd6838432a33e66245423a9062c0
+      - type: file
+        url: https://files.pythonhosted.org/packages/ef/fe/f5cdaa2d1c4086e757430f368c271a58ee29cfe7378e7ae7b9d964015c25/pillow-13.0.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+        sha256: 5f56499c1a74d2b862beb0c33b8016f99d095858455df9d21583bbbc1c15b582
+  - name: mattpic
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 -t /app/share/mattpic mattpic.py mattpic.svg LICENSE
+      - install -Dm755 packaging/flatpak/mattpic.sh /app/bin/mattpic
+      - install -Dm644 packaging/flatpak/com.mathiasree.MattPic.desktop /app/share/applications/com.mathiasree.MattPic.desktop
+      - install -Dm644 packaging/flatpak/com.mathiasree.MattPic.metainfo.xml /app/share/metainfo/com.mathiasree.MattPic.metainfo.xml
+      - install -Dm644 mattpic.svg /app/share/icons/hicolor/scalable/apps/com.mathiasree.MattPic.svg
+      - install -Dm644 packaging/linux/mattpic-256.png /app/share/icons/hicolor/256x256/apps/com.mathiasree.MattPic.png
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - .git
+          - dist
+          - __pycache__

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.mathiasree.MattPic</id>
+  <name>Matt|Pic</name>
+  <summary>Sort and touch up photos quickly</summary>
+  <summary xml:lang="de">Fotos schnell sortieren und bearbeiten</summary>
+  <summary xml:lang="es">Ordenar y retocar fotos rápidamente</summary>
+  <summary xml:lang="pt">Organizar e retocar fotos rapidamente</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="com.mathiasree">
+    <name>Mathias Ree</name>
+  </developer>
+  <description>
+    <p>Matt|Pic is a fast photo organizer in the spirit of the classic Picasa:
+    browse folders, rate with stars, make quick corrections and export.</p>
+    <ul>
+      <li>Originals are never changed – edits are applied only on export</li>
+      <li>Star ratings, moving and trash with undo</li>
+      <li>Quick corrections: crop, rotate, light, colour</li>
+      <li>EXIF details incl. drone flight data, videos and RAW previews</li>
+    </ul>
+    <p>The interface is currently in German.</p>
+  </description>
+  <launchable type="desktop-id">com.mathiasree.MattPic.desktop</launchable>
+  <url type="homepage">https://mathiasree.com</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="1.0.0" date="2026-11-12">
+      <description><p>First release as Matt|Pic.</p></description>
+    </release>
+  </releases>
+</component>
