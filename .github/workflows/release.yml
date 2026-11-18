@@ -48,6 +48,12 @@ jobs:
         run: echo "version=$(sed -n 's/^APP_VERSION = "\(.*\)"/\1/p' mattpic.py)" >> "$GITHUB_OUTPUT"
       - name: PyInstaller
         run: pyinstaller --noconfirm packaging/mattpic.spec
+      - name: Versionsangaben der EXE prüfen
+        shell: pwsh
+        run: |
+          $vi = (Get-Item dist\MattPic\MattPic.exe).VersionInfo
+          "ProductName=$($vi.ProductName) ProductVersion=$($vi.ProductVersion) FileVersion=$($vi.FileVersion)"
+          if ($vi.ProductName -ne "Matt|Pic" -or $vi.ProductVersion -ne "${{ steps.v.outputs.version }}") { throw "Versionsangaben fehlen in MattPic.exe" }
       - name: MSI bauen (en, de, es, pt → ein mehrsprachiges MSI)
         shell: pwsh
         run: |

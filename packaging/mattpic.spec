@@ -25,6 +25,31 @@ a = Analysis(
     noarchive=False,
 )
 pyz = PYZ(a.pure)
+
+# Windows: Versionsangaben in MattPic.exe (Produktname + Version, für die Code-Signatur über SignPath)
+version_file = None
+if sys.platform == "win32":
+    nums = tuple((list(map(int, re.findall(r"\d+", VERSION))) + [0, 0, 0, 0])[:4])
+    version_file = Path(workpath) / "version_info.txt"
+    version_file.parent.mkdir(parents=True, exist_ok=True)
+    version_file.write_text(f"""VSVersionInfo(
+  ffi=FixedFileInfo(filevers={nums}, prodvers={nums}, mask=0x3f, flags=0x0, OS=0x40004,
+                    fileType=0x1, subtype=0x0, date=(0, 0)),
+  kids=[
+    StringFileInfo([StringTable('040904B0', [
+      StringStruct('CompanyName', 'Mathias Ree'),
+      StringStruct('FileDescription', 'Matt|Pic'),
+      StringStruct('FileVersion', '{VERSION}'),
+      StringStruct('InternalName', 'MattPic'),
+      StringStruct('LegalCopyright', '© 2026 Mathias Ree – GNU GPL v3 or later'),
+      StringStruct('OriginalFilename', 'MattPic.exe'),
+      StringStruct('ProductName', 'Matt|Pic'),
+      StringStruct('ProductVersion', '{VERSION}')])]),
+    VarFileInfo([VarStruct('Translation', [1033, 1200])])
+  ]
+)
+""", encoding="utf-8")
+
 exe = EXE(
     pyz, a.scripts, [],
     exclude_binaries=True,
@@ -32,6 +57,7 @@ exe = EXE(
     console=False,
     icon=str(PKG / ("macos/mattpic.icns" if sys.platform == "darwin" else "windows/mattpic.ico")),
     upx=False,
+    version=str(version_file) if version_file else None,
 )
 coll = COLLECT(exe, a.binaries, a.datas, name="MattPic", upx=False)
 
