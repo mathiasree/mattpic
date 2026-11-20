@@ -39,17 +39,7 @@ Flatpak selbst bauen: `packaging/flatpak/build.sh` → `dist/MattPic-Linux.flatp
 ## Tastenkürzel
 F1 im Programm.
 
-## Code signing policy
-Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org)
-
-The Windows installer (`MattPic-Windows.msi`) and the program files it contains are built from this repository by GitHub Actions (`.github/workflows/release.yml`) and signed only after manual approval of each release.
-
-- Committers and reviewers: [Mathias Ree](https://github.com/mathiasree)
-- Approvers: [Mathias Ree](https://github.com/mathiasree)
-
-Changes proposed by others (pull requests) are reviewed by a team member before they are merged.
-
-### Privacy policy
+## Privacy policy
 This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
 
 ## Lizenz
